@@ -348,7 +348,7 @@ export class LocalPublishedProviderAdapter implements ProviderAdapter {
         evidence: scoreSearchableTemplate(
           {
             templateId: item.templateId,
-            title: item.title,
+            title: [item.title, item.titleEn].filter(Boolean).join(" "),
             opaqueTemplateId: true,
             ...resolveFigureDescription(item.description, item.application),
             visualProfile: item.visualProfile,
@@ -385,6 +385,7 @@ export class LocalPublishedProviderAdapter implements ProviderAdapter {
           exactSelector: selector,
           sourceLabel: this.descriptor.sourceLabel,
           title: item.title,
+          ...(item.titleEn ? { titleEn: item.titleEn } : {}),
           retrievalScore: request.browse ? 1 : evidence.score,
           matchedTerms: request.browse ? [] : evidence.matchedTerms.slice(0, 12),
           reasons: request.browse ? ["图库浏览"] : evidence.reasons,

@@ -255,10 +255,11 @@ const ValidationStateSchema = z.object({
   }),
 });
 
-const WorkingPlanInput = z.object({
+export const WorkingPlanInput = z.object({
   mode: z.enum(["create", "update"]).optional(),
   templateId: z.string().regex(SAFE_ID).optional(),
   title: z.string().min(1).max(500).optional(),
+  titleEn: z.string().trim().min(1).max(300).optional(),
   description: z.string().max(8_000).optional(),
   tags: z.array(z.string().min(1).max(200)).max(100).optional(),
   visualProfile: z.string().max(4_000).optional(),
@@ -389,7 +390,7 @@ function uniqueIds(values: string[]) {
   return new Set(values).size === values.length;
 }
 
-function missingWorkingConfirmations(input: WorkingPlanRequest) {
+export function missingWorkingConfirmations(input: WorkingPlanRequest) {
   const missing: string[] = [];
   const confirmations = input.confirmations;
   if (!input.mode) missing.push("mode:create_or_update");
@@ -610,7 +611,7 @@ async function summaryForResult(
   return summarizeReview(content, review);
 }
 
-async function directCandidate(input: WorkingPlanRequest): Promise<VersionedTemplateCandidate> {
+export async function directCandidate(input: WorkingPlanRequest, proposed = false): Promise<VersionedTemplateCandidate> {
   const verified = await verifiedSources(input);
   const byId = new Map(verified.map((asset) => [asset.assetId, asset]));
   const visualPaths = new Map<string, string>();
@@ -778,12 +779,8 @@ async function directCandidate(input: WorkingPlanRequest): Promise<VersionedTemp
     throw new Error("executionStatus conflicts with validationState.plotExecution.status");
   }
 
-  const visualInference = figureCodeLinks.some((link) => link.relationship === "visual_inference");
   const executionStatus = input.executionStatus ?? validationState?.plotExecution.status ?? "not_run";
   const codeStatus = input.assetKind === "visual_reference" ? "none" : input.codeStatus ?? "scaffold";
-  if (visualInference && (executionStatus !== "not_run" || codeStatus !== "scaffold")) {
-    throw new Error("visual_inference must remain scaffold/not_run and inspired_by_not_reproduced");
-  }
   if (executionStatus === "passed") {
     const hasRendered = input.visualAssets.some((asset) => asset.visualRole === "rendered_output");
     const hasGeneratedLink = figureCodeLinks.some((link) => link.relationship === "generated_output");
@@ -803,6 +800,7 @@ async function directCandidate(input: WorkingPlanRequest): Promise<VersionedTemp
   const importId = input.intake?.importId ?? `import-${sha256(canonicalJson({ adapterId, sourceManifest, requiredAssetSha256 })).slice(0, 24)}`;
   return {
     title: input.title!,
+    titleEn: input.titleEn,
     description: input.description,
     tags: input.tags,
     visualProfile: input.visualProfile,
@@ -834,10 +832,10 @@ async function directCandidate(input: WorkingPlanRequest): Promise<VersionedTemp
     runtime: input.runtime,
     annotations: jsonValue({
       schema: "figure-library.direct-intake-decision.v1",
-      executionClaim: visualInference ? "inspired_by_not_reproduced" : executionStatus,
+      executionClaim: executionStatus,
       agentAssessment: input.agentAssessment ?? null,
-      userDecision: {
-        confirmations: input.confirmations,
+      [proposed ? "proposedDecision" : "userDecision"]: {
+        ...(proposed ? { approvalBasis: "apply_of_exact_publish_plan" } : { confirmations: input.confirmations }),
         primaryVisualAssetId: input.primaryVisualAssetId ?? null,
         primaryPreviewOverride: input.primaryPreviewOverride ?? null,
         canonicalCodeAssetId: input.canonicalCodeAssetId ?? null,

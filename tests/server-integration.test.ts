@@ -55,6 +55,7 @@ const STANDARD_TOOLS = [
   "figure_library_apply_provider_source_change",
   "figure_library_apply_publication_export",
   "figure_library_apply_publication_pr",
+  "figure_library_apply_publish",
   "figure_library_apply_publish_working_revision",
   "figure_library_apply_recover_write_lock",
   "figure_library_apply_restore_release",
@@ -84,6 +85,7 @@ const STANDARD_TOOLS = [
   "figure_library_plan_provider_source_change",
   "figure_library_plan_publication_export",
   "figure_library_plan_publication_pr",
+  "figure_library_plan_publish",
   "figure_library_plan_publish_working_revision",
   "figure_library_plan_recover_write_lock",
   "figure_library_plan_restore_release",
@@ -868,6 +870,8 @@ test("standard server unifies Local Published and FigureYa while hiding Working/
         operationId: "anti-loop-audit",
       };
       const auditArguments: Record<string, Record<string, unknown>> = {
+        figure_library_plan_publish: { working: { templateId: "missing-template", revisionId: "missing-revision", contentDigest: hash, reviewDigest: hash } },
+        figure_library_apply_publish: { planDigest: hash, operationId: "anti-loop-unified" },
         figure_library_get_skill: { document: "missing.md" },
         figure_library_get_candidate_images: { resultSetId: "missing", candidateIds: [`candidate-${"0".repeat(32)}`] },
         figure_library_apply_adopt_versioning: genericApply,

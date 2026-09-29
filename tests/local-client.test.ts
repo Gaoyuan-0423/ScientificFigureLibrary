@@ -401,6 +401,17 @@ test("custom tags validate targets, preserve originals and filter before paginat
   const update = { target, tags: ["待使用", "单细胞"], expectedTags: [], libraryContext: snapshot.libraryContext };
   const saved = await api("/api/custom-tags", update);
   assert.equal(records(saved.entries).length, 1);
+  const favorite = records((await api("/api/favorites", { action: "add", ...target })).items)[0]!;
+  const reopened = data(await api("/api/favorites", { action: "open", id: favorite.id }));
+  const reopenedCandidate = records(reopened.candidates)[0]!;
+  assert.deepEqual(reopenedCandidate.exactSelector, candidate.exactSelector);
+  // A favorite opens a new result session; personal tags remain editable there.
+  await api("/api/custom-tags", {
+    ...update,
+    target: { resultSetId: reopened.resultSetId, candidateId: reopenedCandidate.candidateId },
+    tags: ["单细胞", "待使用", "已收藏"], expectedTags: update.tags,
+  });
+  await api("/api/custom-tags", { ...update, expectedTags: ["单细胞", "待使用", "已收藏"] });
   assert.equal((await request("/api/custom-tags", { ...update, tags: ["冲突"] })).status, 400);
   assert.equal((await request("/api/custom-tags", { ...update, target: { ...target, candidateId: "missing" } })).status, 400);
   assert.equal((await request("/api/custom-tags", { ...update, target: { templateId: "missing" } })).status, 400);
@@ -423,4 +434,36 @@ test("custom tags validate targets, preserve originals and filter before paginat
   assert.deepEqual(records(next.candidates)[0]!.exactSelector, candidate.exactSelector);
   await api("/api/custom-tags", { ...update, tags: [], expectedTags: ["待使用", "单细胞"] });
   assert.equal(records((await api("/api/custom-tags")).entries).length, 1);
+  assert.deepEqual(records((await api("/api/favorites")).items)[0]!.exactSelector, candidate.exactSelector,
+    "editing or removing personal tags must preserve the exact-version favorite");
+});
+
+test("favorites endpoints authenticate, persist across sessions and open only the saved exact version", async t => {
+  const { local, service, request, api } = await isolated(t);
+  assert.equal((await fetch(local.origin + "/api/favorites")).status, 401);
+  assert.equal((await request("/api/favorites", { action: "remove", id: "0".repeat(64) }, { Origin: "https://unrelated.example" })).status, 403);
+  assert.deepEqual((await api("/api/favorites")).items, []);
+  const gallery = data(await api("/api/gallery", { providerIds: ["org.figureya.module"], limit: 2 }));
+  const candidate = records(gallery.candidates)[0]!;
+  const add = { action: "add", resultSetId: gallery.resultSetId, candidateId: candidate.candidateId };
+  const saved = records((await api("/api/favorites", add)).items)[0]!;
+  assert.deepEqual(saved.exactSelector, candidate.exactSelector);
+  assert.equal(records((await api("/api/favorites", add)).items).length, 1);
+  await assert.rejects(service.local.changeFavorite({ ...add, candidateId: "unknown" }));
+  const registry = createDefaultProviderRegistry();
+  const restarted = await createLibraryService({ registry });
+  try {
+    assert.equal((await restarted.local.favorites()).items.length, 1);
+    await assert.rejects(restarted.local.changeFavorite(add));
+    const opened = data(await restarted.local.changeFavorite({ action: "open", id: saved.id }));
+    assert.equal(records(opened.candidates).length, 1);
+    assert.deepEqual(records(opened.candidates)[0]!.exactSelector, candidate.exactSelector);
+    assert.notEqual(opened.resultSetId, gallery.resultSetId);
+    assert.equal(opened.previewReceipt, undefined);
+    registry.applyEnabledOverrides(new Map([["org.figureya.module", false]]));
+    await assert.rejects(restarted.local.changeFavorite({ action: "open", id: saved.id }));
+    assert.equal((await restarted.local.favorites()).items.length, 1);
+  } finally { await restarted.close(); }
+  await api("/api/favorites", { action: "remove", id: saved.id });
+  assert.deepEqual((await api("/api/favorites")).items, []);
 });

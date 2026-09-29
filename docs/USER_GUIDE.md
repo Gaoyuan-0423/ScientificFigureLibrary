@@ -599,3 +599,9 @@ or plotting success.
 ## Custom image tags
 
 Use “编辑标签” (Edit tags) on a gallery card or image detail, including My Library. Enter comma-separated personal tags and save; clear the field to remove them. Choose a complete tag in the custom-tag filter, optionally combining it with a gallery search and source. Each image entry supports up to 20 tags of 40 characters each. Source tags and published content stay unchanged. Personal tags are scoped to the bound library and follow a provider-qualified entry across revisions. They survive application upgrades but live in local configuration, outside existing library backups and template exports. Reopen the editor after an editing conflict. See [local client storage details](LOCAL_CLIENT.md#图片自定义标签).
+
+## Starred templates in the local client
+
+Use ☆ on a gallery card or template detail to save that exact version; ★ removes it. The macOS and local Web clients include a **Favorites (收藏)** page with search by title, source and application, and an action to reopen the template for preview/use.
+
+Favorites are stored in the machine-local user configuration, survive restarts and are independent of preview/archive caches. Provider identities and exact versions stay separate. If the original version is withdrawn, updated or its source disabled, opening it reports an error and retains the bookmark; remove it or explicitly star a new version from the gallery. Starring does not download archives, execute code, select plotting references or grant preview/materialization approval.

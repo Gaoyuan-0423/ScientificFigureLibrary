@@ -34,6 +34,7 @@ export { OPEN_FIGURE_REPOSITORY, OPEN_FIGURE_PROVIDER_ID, OPEN_FIGURE_SOURCE_LAB
 import { createGhCliRunner, type GhCommandResult, type GhRunner } from "./github-publication-tools.ts";
 import type { ModuleCatalogIndex } from "./module-catalog.ts";
 import type { CatalogIndex } from "./catalog.ts";
+import type { TemplateContentV1, VersionedTemplateLibrary } from "./versioned-library.ts";
 
 const HOST = "github.com" as const;
 const BASE_BRANCH = "main" as const;
@@ -99,7 +100,8 @@ export interface OpenFigureSimilarCandidate {
 export interface OpenFigurePrPlan {
   schema: "figure-library.open-figure-pr-plan.v1";
   providerId: typeof LOCAL_LIBRARY_PROVIDER_ID;
-  exactSelector: LocalPublishedExactSelector;
+  exactSelector?: LocalPublishedExactSelector;
+  contentSelector: { templateId: string; revisionId: string; contentDigest: string };
   moduleId: string;
   title: string;
   titleEn: string;
@@ -136,6 +138,7 @@ export interface OpenFigurePrPlan {
 }
 
 interface PreparedPlan {
+  inlineReview?: boolean;
   plan: OpenFigurePrPlan;
   moduleFiles: Map<string, Uint8Array>;
   archiveZip: Uint8Array;
@@ -672,14 +675,15 @@ export class OpenFigurePublicationService {
     }
   }
 
-  async #prepare(selector: LocalPublishedExactSelector): Promise<PreparedPlan> {
+  async #prepare(selector?: LocalPublishedExactSelector, draft?: { content: TemplateContentV1; library: Pick<VersionedTemplateLibrary, "readAsset"> }): Promise<PreparedPlan> {
     const context = await this.#currentLibraries();
     if (!context.snapshot.writesEnabled) throw new Error("a writable global Library is required to plan an Open Figure PR");
     const marker = await readLibraryRootMarker(context.snapshot.root);
     if (!marker) throw new Error("global Library root marker is missing");
-    const { content } = await resolvePublished(context, selector);
-    const build = await buildOpenFigureModule({ library: context.versionedLibrary, content });
+    const { content } = draft ?? await resolvePublished(context, selector!);
+    const build = await buildOpenFigureModule({ library: draft?.library ?? context.versionedLibrary, content });
     const login = await readAuthAccount(this.#runner);
+    if (login !== "jarxunlai") throw new Error("Open Figure publication requires GitHub account jarxunlai");
     const target = await getRepository(this.#runner, OPEN_FIGURE_REPOSITORY);
     if (target.default_branch !== BASE_BRANCH || target.archived || target.disabled) {
       throw new Error("Open Figure Modules repository is not writable through main PRs");
@@ -734,7 +738,8 @@ export class OpenFigurePublicationService {
     const unsigned: Omit<OpenFigurePrPlan, "planDigest"> = {
       schema: "figure-library.open-figure-pr-plan.v1",
       providerId: LOCAL_LIBRARY_PROVIDER_ID,
-      exactSelector: selector,
+      ...(selector ? { exactSelector: selector } : {}),
+      contentSelector: { templateId: content.templateId, revisionId: content.revisionId, contentDigest: content.contentDigest },
       moduleId: build.moduleId,
       title: build.title,
       titleEn: build.titleEn,
@@ -802,6 +807,38 @@ export class OpenFigurePublicationService {
     return prepared.plan;
   }
 
+  /** Read-only public preflight; no fabricated Release selector and no Library writes. */
+  async planContent(content: TemplateContentV1, library: Pick<VersionedTemplateLibrary, "readAsset">) {
+    return (await this.#prepare(undefined, { content, library })).plan;
+  }
+
+  /** Called only by the confirmed unified publication, after its actual local Release exists. */
+  async bindPublished(preflight: OpenFigurePrPlan, selector: LocalPublishedExactSelector, previous?: OpenFigurePrPlan) {
+    if (canonicalJson(preflight.contentSelector) !== canonicalJson({ templateId: selector.identity.templateId,
+      revisionId: selector.identity.revisionId, contentDigest: selector.identity.contentDigest })) {
+      throw new Error("published content differs from the confirmed public preflight");
+    }
+    const prepared = await this.#prepare(selector);
+    const comparable = (plan: OpenFigurePrPlan) => canonicalJson({ ...plan, exactSelector: null,
+      similarSearch: { ...plan.similarSearch, resultSetId: "" }, head: { ...plan.head, forkWillBeCreated: false }, planDigest: "" });
+    if (comparable(preflight) !== comparable(prepared.plan)) throw new Error("public files, similar candidates, GitHub account or base changed after planning");
+    if (previous) {
+      if (comparable(previous) !== comparable(prepared.plan) || canonicalJson(previous.exactSelector) !== canonicalJson(selector)) throw new Error("resumed public publication differs from its confirmed plan");
+      prepared.plan = previous;
+    }
+    prepared.inlineReview = true;
+    this.#prune();
+    this.#plans.set(prepared.plan.planDigest, { prepared, expiresAt: this.#now().getTime() + PLAN_TTL_MS });
+    return prepared.plan;
+  }
+
+  async completedResult(planDigest: string, operationId: string) {
+    const receipt = await readReceipt(this.#receiptDirectory, operationId);
+    if (!receipt) return undefined;
+    if (receipt.planDigest !== planDigest) throw new Error("operationId is already bound to a different Open Figure PR Plan");
+    return { outcome: "replayed" as const, receipt };
+  }
+
   async apply(options: {
     planDigest: string;
     operationId: string;
@@ -819,7 +856,7 @@ export class OpenFigurePublicationService {
     this.#prune();
     const cached = this.#plans.get(options.planDigest);
     if (!cached) throw new Error("Open Figure PR Plan expired or belongs to another server process");
-    if (cached.prepared.plan.similarReviewRequired) {
+    if (cached.prepared.plan.similarReviewRequired && !cached.prepared.inlineReview) {
       if (options.similarReviewConfirmed !== true || !options.expectedResultSetId) {
         throw new Error("similar Open Figure candidates must be reviewed in the SFL window before Apply");
       }
@@ -841,6 +878,7 @@ export class OpenFigurePublicationService {
         throw new Error("similar-search result set included Local Published");
       }
     }
+    if (!cached.prepared.plan.exactSelector) throw new Error("public preflight is not bound to a published Release");
     const rebuilt = await this.#prepare(cached.prepared.plan.exactSelector);
     const comparable = (plan: OpenFigurePrPlan) => canonicalJson({
       ...plan,

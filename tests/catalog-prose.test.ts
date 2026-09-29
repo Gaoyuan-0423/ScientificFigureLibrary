@@ -17,6 +17,12 @@ test("keeps already structured Markdown", () => {
   assert.equal(formatCatalogProse(value), value);
 });
 
+test("mixed Chinese scientific terms stay in one paragraph", () => {
+  const question = "细胞簇的标记基因与 GO 功能是否一致？";
+  assert.equal(formatCatalogProse(question), question);
+  assert.equal(formatCatalogProse("三张 CSV 输入，展示 TF motif 模式。"), "三张 CSV 输入，展示 TF motif 模式。");
+});
+
 test("splits FigureYa bilingual requirement and drops the scraped page number", () => {
   const formatted = formatCatalogProse(requirement);
   assert.match(formatted, /画圈画箭头。\n\nPCA plot of RNA seq/u);

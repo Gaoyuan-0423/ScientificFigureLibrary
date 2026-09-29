@@ -83,7 +83,7 @@
     "start": "node dist/index.js",
     "version:check": "node scripts/check-version-sync.mjs",
     "version:set": "node scripts/version-set.mjs",
-    "test": "node scripts/check-version-sync.mjs && node --test tests/*.test.ts",
+    "test": "node scripts/check-version-sync.mjs && node scripts/test-isolated.mjs",
     "test:smoke": "npm run build && node scripts/smoke.mjs",
     "check": "npm run test && npm run test:smoke",
     "package:codex": "node scripts/release-preflight.mjs && npm run build && node scripts/package-codex.mjs",

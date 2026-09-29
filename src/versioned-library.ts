@@ -223,6 +223,7 @@ export interface RuntimeClosureV1 {
 
 export interface VersionedTemplateCandidate {
   title: string;
+  titleEn?: string;
   description?: string;
   tags?: string[];
   visualProfile?: string;
@@ -320,6 +321,7 @@ export interface TemplateContentV1 {
   restoredFromReleaseId?: string;
   createdAt: string;
   title: string;
+  titleEn?: string;
   description: string;
   tags: string[];
   visualProfile: string;
@@ -817,7 +819,7 @@ async function readAssetSource(input: RevisionAssetInput) {
   };
 }
 
-async function bytesForPreparedSource(
+export async function bytesForPreparedSource(
   source: PreparedAssetSource,
   expected: StoredRevisionAsset,
 ) {
@@ -1426,6 +1428,7 @@ async function prepareCandidate(options: {
       : {}),
     createdAt: options.createdAt,
     title,
+    ...(normalizedText(candidate.titleEn) ? { titleEn: normalizedText(candidate.titleEn) } : {}),
     description: normalizedText(candidate.description),
     tags: uniqueStrings(candidate.tags, "tags"),
     visualProfile: normalizedText(candidate.visualProfile),
@@ -1468,16 +1471,6 @@ async function prepareCandidate(options: {
   const addError = (code: string, message: string, fieldPath?: string) => {
     const base = { code, message, ...(fieldPath ? { path: fieldPath } : {}) };
     domainErrors.push({ id: issueId("validation", base), ...base, source: "system" });
-  };
-  const addGate = (gateId: string, code: string, message: string, fieldPath?: string) => {
-    domainGates.push({
-      gateId,
-      code,
-      message,
-      ...(fieldPath ? { path: fieldPath } : {}),
-      source: "rule",
-      status: "open",
-    });
   };
   const addWarning = (code: string, message: string, fieldPath?: string) => {
     const base = { code, message, ...(fieldPath ? { path: fieldPath } : {}) };
@@ -1654,33 +1647,25 @@ async function prepareCandidate(options: {
       );
     }
     if (link.relationship === "visual_inference") {
-      if (candidate.codeStatus !== "scaffold" || content.executionStatus !== "not_run") {
-        addError(
-          "visual_inference_must_be_unrun_scaffold",
-          "Code inferred from a source visual must remain scaffold/not_run",
-          `figureCodeLinks.${index}.relationship`,
-        );
-      }
       if (
         link.codeAssetPaths.some(
-          (assetPath) => assetsByPath.get(assetPath)?.codeOrigin !== "agent_generated",
+          (assetPath) => !["agent_generated", "adapted"].includes(assetsByPath.get(assetPath)?.codeOrigin ?? ""),
         )
       ) {
         addError(
           "visual_inference_requires_agent_generated_origin",
-          "Code linked by visual_inference must declare codeOrigin agent_generated",
+          "Code linked by visual_inference must declare codeOrigin agent_generated or adapted",
           `figureCodeLinks.${index}.codeAssetPaths`,
         );
       }
       addWarning(
         "inspired_by_not_reproduced",
-        "The scaffold was inferred from a visual reference and has not been run or reproduced",
+        "Visual-reference provenance does not establish authorship of the source implementation",
         `figureCodeLinks.${index}`,
       );
     }
   }
   if (candidate.assetKind === "plot_template" && visualAssets.length && codeAssets.length) {
-    const linkedVisuals = new Set(figureCodeLinks.map((link) => link.visualAssetPath));
     const linkedCode = new Set(figureCodeLinks.flatMap((link) => link.codeAssetPaths));
     if (codeAssets.some((asset) => !linkedCode.has(asset.logicalPath))) {
       addError(
@@ -1689,24 +1674,13 @@ async function prepareCandidate(options: {
         "figureCodeLinks",
       );
     }
-    if (
-      visualAssets.some((asset) => !linkedVisuals.has(asset.logicalPath)) ||
-      codeAssets.some((asset) => !linkedCode.has(asset.logicalPath))
-    ) {
-      addGate(
-        "review-figure-code-pairing",
-        "figure_code_pairing_review_required",
-        "Every visual and code asset must participate in an evidence-backed Figure/code relationship",
+    if (visualAssets.some((asset) => asset.visualRole === "rendered_output" && !figureCodeLinks.some((link) => link.visualAssetPath === asset.logicalPath && link.relationship === "generated_output"))) {
+      addError(
+        "rendered_output_relationship_required",
+        "Every rendered output must have an evidence-backed generated_output relationship",
         "figureCodeLinks",
       );
     }
-  }
-  if (candidate.codeStatus === "scaffold" && content.executionStatus !== "not_run") {
-    addError(
-      "scaffold_must_be_not_run",
-      "Scaffold code cannot claim a passed or failed execution",
-      "executionStatus",
-    );
   }
   if (
     content.executionStatus === "passed" &&
@@ -1870,6 +1844,7 @@ export interface PublishedVersionedTemplateCandidate {
   releaseId: string;
   publishedAt: string;
   title: string;
+  titleEn?: string;
   description: string;
   tags: string[];
   visualProfile: string;
@@ -1983,6 +1958,7 @@ interface LegacyTemplateV1 {
   templateId: string;
   sourceId: "user";
   title: string;
+  titleEn?: string;
   description: string;
   tags: string[];
   visualProfile: string;
@@ -2111,6 +2087,7 @@ function validateContentValue(
   if (value.application !== undefined && (typeof value.application !== "string" || value.application.length > 8_000)) {
     throw new Error("invalid content application (maximum 8000 characters)");
   }
+  if (value.titleEn !== undefined && (typeof value.titleEn !== "string" || !value.titleEn.trim() || value.titleEn.length > 300)) throw new Error("invalid titleEn");
   if (value.scientificQuestion !== undefined) {
     if (typeof value.scientificQuestion !== "string") throw new Error("invalid content scientificQuestion");
     if (value.scientificQuestion.length > 2000) throw new Error("scientificQuestion exceeds 2000 characters");
@@ -2285,13 +2262,11 @@ function validateContentValue(
     if (
       link.relationship === "visual_inference" &&
       (linkedVisual?.visualRole !== "source_reference" ||
-        value.codeStatus !== "scaffold" ||
-        value.executionStatus !== "not_run" ||
         link.codeAssetPaths.some(
-          (item) => byPath.get(validateRevisionAssetPath(item))?.codeOrigin !== "agent_generated",
+          (item) => !["agent_generated", "adapted"].includes(byPath.get(validateRevisionAssetPath(item))?.codeOrigin ?? ""),
         ))
     ) {
-      throw new Error("visual_inference must be an agent-generated scaffold/not_run from source_reference");
+      throw new Error("visual_inference must link agent-generated or adapted code to source_reference");
     }
     if (link.relationship === "generated_output" && linkedVisual?.visualRole !== "rendered_output") {
       throw new Error("generated_output must target rendered_output");
@@ -2878,6 +2853,7 @@ export class VersionedTemplateLibrary {
         releaseId: release.releaseId,
         publishedAt: release.publishedAt,
         title: content.title,
+        ...(content.titleEn ? { titleEn: content.titleEn } : {}),
         description: content.description,
         tags: [...content.tags],
         visualProfile: content.visualProfile,
@@ -3572,13 +3548,13 @@ export class VersionedTemplateLibrary {
     });
   }
 
-  async validateRuntimeClosure(content: TemplateContentV1) {
+  async validateRuntimeClosure(content: TemplateContentV1, readAsset = this.readAsset.bind(this)) {
     if (content.assetKind !== "plot_template") return;
     const r = normalizeRuntimeClosure(content.runtime, new Map(content.assets.map(a=>[a.logicalPath,a])), content.canonicalImplementation?.assetPath, content.primaryPreview);
     if (!r) {
       const canonicalPath = content.canonicalImplementation?.assetPath;
       if (!canonicalPath) return;
-      const loaded = await this.readAsset({templateId:content.templateId, revisionId:content.revisionId,contentDigest:content.contentDigest,logicalPath:canonicalPath});
+      const loaded = await readAsset({templateId:content.templateId, revisionId:content.revisionId,contentDigest:content.contentDigest,logicalPath:canonicalPath});
       const reads = inspectRuntimeReads(new TextDecoder().decode(loaded.bytes));
       if (reads.length) {
         const first = reads.find((read) => read.kind === "data") ?? reads[0]!;
@@ -3588,7 +3564,7 @@ export class VersionedTemplateLibrary {
     }
     const paths = [...r.inputs.map(i=>i.codePath), ...(r.dependencies ?? []).map(i=>i.codePath)];
     for (const assetPath of [r.entrypoint,...(r.dependencies ?? []).map(i=>i.assetPath)]) {
-      const loaded = await this.readAsset({templateId:content.templateId, revisionId:content.revisionId,contentDigest:content.contentDigest,logicalPath:assetPath});
+      const loaded = await readAsset({templateId:content.templateId, revisionId:content.revisionId,contentDigest:content.contentDigest,logicalPath:assetPath});
       assertRuntimeReads(new TextDecoder().decode(loaded.bytes), paths, `${content.templateId}/${content.revisionId}/${assetPath}`);
     }
   }
@@ -3790,6 +3766,7 @@ export class VersionedTemplateLibrary {
     const createdAt = nowIso();
     const candidate: VersionedTemplateCandidate = {
       title: legacy.title,
+      ...(legacy.titleEn ? { titleEn: legacy.titleEn } : {}),
       description: legacy.description,
       tags: legacy.tags,
       visualProfile: legacy.visualProfile,

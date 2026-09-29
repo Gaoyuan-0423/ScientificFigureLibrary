@@ -22,6 +22,7 @@ export function buildHeadlessReviewHandoff(options: {
         ? { materializationModes: candidate.materializationModes }
         : {}),
       title: candidate.title,
+    ...(candidate.titleEn ? { titleEn: candidate.titleEn } : {}),
       ...(candidate.previewSha256
         ? { candidateThumbnailSha256: candidate.previewSha256 }
         : {}),
