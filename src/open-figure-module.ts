@@ -93,10 +93,6 @@ export function assertPortableModuleId(templateId: string) {
   return templateId;
 }
 
-function deriveTitleEn(title: string, moduleId: string) {
-  if (/^[\x20-\x7e]+$/u.test(title) && title.trim()) return { titleEn: title.trim(), derived: false };
-  return { titleEn: moduleId.replace(/[-_.]+/gu, " ").trim(), derived: true };
-}
 
 function scanText(pathValue: string, text: string) {
   if (text.includes("\uFFFD")) throw new Error(`public text asset is not valid UTF-8: ${pathValue}`);
@@ -301,7 +297,7 @@ export function buildSearchQuery(content: TemplateContentV1) {
 }
 
 export async function buildOpenFigureModule(options: {
-  library: VersionedTemplateLibrary;
+  library: Pick<VersionedTemplateLibrary, "readAsset">;
   content: TemplateContentV1;
 }): Promise<OpenFigureModuleBuild> {
   const moduleId = assertPortableModuleId(options.content.templateId);
@@ -432,7 +428,10 @@ export async function buildOpenFigureModule(options: {
 
   const title = options.content.title.trim();
   if (!title) throw new Error("Open Figure publication requires a title");
-  const titleEnInfo = deriveTitleEn(title, moduleId);
+  const titleEnInfo = options.content.titleEn?.trim()
+    ? { titleEn: options.content.titleEn.trim(), derived: false }
+    : /^[\x20-\x7e]+$/u.test(title) ? { titleEn: title, derived: false } : undefined;
+  if (!titleEnInfo) throw new Error("Open Figure publication requires a readable titleEn; propose it in the publication plan");
   const projection = resolveFigureDescription(options.content.description, options.content.application);
   const description = projection.description.trim() || title;
   const application = projection.application.trim() || "未单独记录。此历史模板尚未提供独立应用场景。";

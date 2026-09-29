@@ -17,6 +17,7 @@ import {
 import { LibraryRuntime, readLibraryRootMarker } from "./library-runtime.ts";
 import { WorkspaceRuntime } from "./workspace-runtime.ts";
 import { firstRunSetupLines, firstRunSetupPayload, firstRunSetupStatus } from "./first-run-setup.ts";
+import { definePublishOperations } from "./publish-tools.ts";
 import { defineLifecycleOperations } from "./lifecycle-tools.ts";
 import { defineMaterializationOperations } from "./materialization-tools.ts";
 import { defineGitHubPublicationOperations } from "./github-publication-tools.ts";
@@ -212,6 +213,7 @@ function headlessPlotTaskItem(candidate: TemplateCandidate) {
     ...(candidate.materializationSelectors ? { materializationSelectors: candidate.materializationSelectors } : {}),
     ...(candidate.materializationModes ? { materializationModes: candidate.materializationModes } : {}),
     title: candidate.title,
+    ...(candidate.titleEn ? { titleEn: candidate.titleEn } : {}),
     description: candidate.description,
     application: candidate.application ?? "",
     dataProfile: candidate.dataProfile ?? "",
@@ -621,6 +623,11 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
 
   const hostIntegrationCapabilities = {
     guidanceTool: "figure_library_get_skill",
+    publicationPlanTool: "figure_library_plan_publish",
+    publicationApplyTool: "figure_library_apply_publish",
+    publicationProtocolVersion: 1,
+    independentExecutionState: true,
+    bilingualTemplateTitles: true,
     paginationTool: "figure_library_search_page",
     candidateImagesTool: "figure_library_get_candidate_images",
     candidateImageResourceTemplate: CANDIDATE_IMAGE_URI_TEMPLATE,
@@ -2233,7 +2240,7 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
   });
   defineBundleOperations({ operations, currentLibraries });
   defineGitHubPublicationOperations({ operations });
-  defineOpenFigurePrOperations({
+  const publicPublication = defineOpenFigurePrOperations({
     ...options.openFigurePr,
     operations,
     currentLibraries,
@@ -2302,6 +2309,7 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
       return { candidates, queryDigest, resultSetId };
     },
   });
+  definePublishOperations({ operations, currentLibrary: async () => (await currentLibraries()).versionedLibrary, publicService: publicPublication });
   definePublicationExportOperations({ operations, currentLibraries });
   defineProviderSourceOperations({
     operations,

@@ -155,7 +155,54 @@ Write-lock recovery is exceptional. Call
 lock. Apply with `figure_library_apply_recover_write_lock` only after the user
 confirms that all writers are stopped and approves the exact unchanged plan.
 
-## 2. Create or update a Working Revision from user files
+## 2. One publication plan (default path)
+
+Keep Draft → Gallery → Local Published → Open Module. The host owns Draft/Gallery,
+reading sources, crop-based visual inspection and execution in the approved environment.
+A request to recreate a figure covers ordinary rendering/review in that environment,
+not package installation, arbitrary downloaded scripts or expensive upstream analysis.
+Use supplied original data when appropriate; otherwise use examples or synthetic data.
+Do not repeatedly request original data or general author authorization for learning
+and independently implementing a visual. Keep actual origin and rights in metadata.
+
+1. Read the supplied CiteBox transfer, figure legend or relevant source text. Use the
+   description guidance to propose title, readable titleEn, scientificQuestion,
+   description, application, dataProfile and visualProfile. If context is incomplete,
+   offer a qualified applicability question in the final plan rather than inventing a
+   source finding or starting repeated background questions.
+2. Call figure_library_plan_publish with candidate (proposed fields and asset IDs,
+   no confirmations or confirmedBy flags), or working (templateId, revisionId,
+   contentDigest and reviewDigest). Default target is local. Select open_module only
+   when the user explicitly requests a public submission. Put applicable existing
+   gateDecisions in this same plan; do not resolve unrelated gates automatically.
+3. Show the exact preview, bilingual title, scientific question, useful template prose,
+   input shape, code entrypoint and scope. Include the host's exact Gallery promotion
+   actions. Show public files/licenses/similar candidates only for open_module.
+   Technical warnings and provenance remain inspectable but routine synthetic/upstream
+   states are not a user-facing disclaimer or a new approval gate. Do not hide a
+   substantive input, safety or distribution conflict. Display returned similar
+   candidates as part of this same review, not a separate approval round.
+4. After one human confirmation, complete only the approved Gallery changes without
+   altering the frozen inputs, then call figure_library_apply_publish with planDigest
+   and a stable operationId. Pass acceptSimilarCandidates=true only if that review
+   included the returned similar candidates. Never create an approval merely because
+   the Agent proposed the content. Generated-output evidence must remain truthful.
+5. Return actual stage results. Local means Local Published, not GitHub. Do not ask
+   again whether to submit a PR after a local-only publication. Public scope ends at
+   the PR link, never merge. A partial failure retains completed local stages. Inspect
+   the reported failure; resume the same operation only after its blocking condition
+   changes. Content/target changes require a fresh plan and a focused difference review.
+
+A prospective plan is not a stored human decision. Its chosen preview, grouping and
+relationships take effect only when that exact plan is approved and applied. Pending
+public preflight has a contentSelector, not a fabricated published Release selector.
+
+### Compatibility: fine-grained Working/review tools
+
+The following instructions are for existing integrations and explicit lifecycle repair,
+not additional user approval steps to append to the unified path.
+
+### Create or update a Working Revision from user files
 
 ### Inspect before asking for confirmation
 
@@ -191,9 +238,8 @@ Allowed relationships are `user_supplied_pair`, `author_provided_original`,
 `visual_inference`, `adapted_from_template`, and `generated_output`.
 
 Use `visual_reference` when reliable code is absent. A `plot_template` requires
-code and a canonical code asset selected by the user. Any `visual_inference`
-must be `scaffold` / `not_run` and described as inspired by the visual, not as
-a reproduction. `plotExecution.passed` is permitted only with a visual marked
+code and a canonical code asset selected by the user. A `visual_inference` records visual provenance independently from execution.
+Source references need not pretend to be code outputs. `plotExecution.passed` is permitted only with a visual marked
 `rendered_output`, a `generated_output` link, and an evidence asset.
 
 Canonical preview rules:
@@ -279,12 +325,11 @@ Every mutation is plan/apply:
   `figure_library_plan_publish_working_revision` then
   `figure_library_apply_publish_working_revision`;
 
-After `figure_library_apply_publish_working_revision` succeeds, ask once whether
-to submit that exact Local Published Release to Open Figure Modules. Explain
+Only when the user explicitly requests a public submission of an existing Release, explain
 that source/reference images, PDFs, evidence, receipts, and Local Library
 state stay out of the PR; included bytes are portable code, example/synthetic
 data, a generated PNG preview, and documentation, licensed MIT / CC BY 4.0.
-If the user declines, stop. If the user agrees, call
+Do not offer an unsolicited second approval round after local-only publication. For this explicitly requested legacy public flow, call
 `figure_library_github_auth_status` then
 `figure_library_plan_open_figure_module_pr` with the just-published
 `providerId` and `exactSelector`.

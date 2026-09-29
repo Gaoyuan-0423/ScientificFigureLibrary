@@ -465,7 +465,7 @@ test("visual inference cannot be mislabeled as executed reproduction", async () 
     const outcome = record(record(response.structuredContent).envelope);
     assert.equal(outcome.outcome, "blocked");
     assert.equal(outcome.retrySameCall, false);
-    assert.match(toolText(response), /visual_inference must remain scaffold\/not_run/u);
+    assert.match(toolText(response), /passed requires a rendered_output, generated_output link, and evidence asset/u);
     assert.equal(await connection.library.getSeries("invalid-inference-claim"), undefined);
   } finally {
     await connection.client.close();

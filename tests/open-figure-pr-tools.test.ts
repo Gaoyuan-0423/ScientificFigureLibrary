@@ -4,6 +4,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { OperationRegistry } from "../src/service/operations.ts";
+import { definePublishOperations } from "../src/publish-tools.ts";
+import { bytesForPreparedSource } from "../src/versioned-library.ts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -562,4 +565,66 @@ test("real MCP Plan -> exact cached search -> confirmed Apply binds the same six
     if (prior === undefined) delete process.env.FIGURE_LIBRARY_DIR; else process.env.FIGURE_LIBRARY_DIR = prior;
     await fs.rm(published.root, { recursive: true, force: true });
   }
+});
+
+
+test("unpublished content public preflight is read-only and binds only the real matching release", async () => {
+  const f = await publishedContext(); const library = f.context.versionedLibrary; const runner = new MockGhRunner();
+  const service = new OpenFigurePublicationService({ currentLibraries: async () => f.context,
+    searchSimilar: async () => emptySearch(), lookupSearchSession: () => undefined,
+    ghRunner: runner, receiptDirectory: path.join(f.root, "draft-receipts") });
+  try {
+    const working = await library.planCreateWorking({ templateId: "pending-bars", candidate: candidate() });
+    const reader = { readAsset: async (s: Parameters<VersionedTemplateLibrary["readAsset"]>[0]) => {
+      const asset = working.content.assets.find(a => a.logicalPath === s.logicalPath)!;
+      const source = working.assetSources.find(a => a.logicalPath === s.logicalPath)!;
+      return { ...s, asset, bytes: new Uint8Array(await bytesForPreparedSource(source, asset)) };
+    } };
+    const preflight = await service.planContent(working.content, reader);
+    assert.equal(preflight.exactSelector, undefined);
+    assert.equal(preflight.contentSelector.contentDigest, working.content.contentDigest);
+    assert.equal(await library.getSeries("pending-bars"), undefined);
+    assert.equal(runner.writes.length, 0);
+    await library.applyCreateWorking(working, "pending-working");
+    const publication = await library.planPublish({ templateId: "pending-bars" });
+    await library.applyPublish(publication, "pending-published");
+    const selector = localPublishedExactSelector({ templateId: publication.release.templateId, revisionId: publication.release.revisionId, contentDigest: publication.release.contentDigest, releaseId: publication.release.releaseId });
+    const bound = await service.bindPublished(preflight, selector);
+    assert.deepEqual(bound.exactSelector, selector);
+    await service.apply({ planDigest: bound.planDigest, operationId: "pending-pr" });
+    assert.equal(runner.createdPulls, 1);
+    await assert.rejects(service.bindPublished(preflight, f.selector), /differs/);
+  } finally { await fs.rm(f.root, { recursive: true, force: true }); }
+});
+
+test("unified public Apply retains Local Published on failure and resumes without another release or PR", async () => {
+  const f = await publishedContext(); const library = f.context.versionedLibrary; const runner = new MockGhRunner();
+  const service = new OpenFigurePublicationService({ currentLibraries: async () => f.context,
+    searchSimilar: async () => ({ ...emptySearch(), candidates: [similarCandidate()] }), lookupSearchSession: () => undefined,
+    ghRunner: runner, receiptDirectory: path.join(f.root, "unified-receipts") });
+  const start = () => { const operations = new OperationRegistry(); definePublishOperations({ operations, currentLibrary: async () => library, publicService: service }); return operations; };
+  try {
+    const w = await library.planCreateWorking({ templateId: "unified-bars", candidate: candidate() });
+    await library.applyCreateWorking(w, "fixture-working");
+    const ops = start();
+    const planned = (await ops.execute("figure_library_plan_publish", { target: "open_module", working: {
+      templateId: w.templateId, revisionId: w.content.revisionId, contentDigest: w.content.contentDigest, reviewDigest: w.review.reviewDigest,
+    } })).structuredContent as any;
+    assert.equal(planned.envelope.code, "publish_plan_ready", JSON.stringify(planned));
+    assert.equal(runner.writes.length, 0);
+    const request = { planDigest: planned.plan.planDigest, operationId: "unified-pr", acceptSimilarCandidates: true };
+    const originalApply = service.apply.bind(service);
+    service.apply = async () => { throw new Error("fixture public network interruption"); };
+    const first = (await ops.execute("figure_library_apply_publish", request)).structuredContent as any;
+    assert.equal(first.completedStage, "local_published", JSON.stringify(first));
+    assert.equal(first.result.localPublished, true);
+    assert.equal((await library.history(w.templateId)).releases.length, 1);
+    service.apply = originalApply;
+    const second = (await start().execute("figure_library_apply_publish", request)).structuredContent as any;
+    assert.equal(second.envelope.outcome, "applied", JSON.stringify(second));
+    assert.equal(runner.createdPulls, 1);
+    assert.equal((await library.history(w.templateId)).releases.length, 1);
+    assert.equal(((await start().execute("figure_library_apply_publish", request)).structuredContent as any).envelope.outcome, "replayed");
+    assert.equal(runner.createdPulls, 1);
+  } finally { await fs.rm(f.root, { recursive: true, force: true }); }
 });

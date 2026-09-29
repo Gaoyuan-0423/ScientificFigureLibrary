@@ -194,7 +194,7 @@ function firstProseParagraph(value: string) {
 }
 
 function cardContext(candidate: Candidate) {
-  const scientificQuestion = firstProseParagraph(candidate.scientificQuestion ?? "");
+  const scientificQuestion = markdownPlainText(candidate.scientificQuestion ?? "");
   if (scientificQuestion) return { label: "科学问题", text: scientificQuestion };
   const application = firstProseParagraph(candidate.application ?? "");
   if (application) return { label: "应用场景", text: application };
@@ -423,7 +423,7 @@ export function renderCandidateCards(options: {
     headingNode.append(titleButton);
     heading.append(
       headingNode,
-      ...(candidate.titleEn?.trim()
+      ...(candidate.titleEn?.trim() && candidate.titleEn.trim().toLocaleLowerCase() !== candidate.title.trim().toLocaleLowerCase()
         ? [element(document, "span", "module-title-en", candidate.titleEn.trim())]
         : []),
       element(
@@ -597,7 +597,7 @@ export function openCandidateDetail(options: {
   closeButton.setAttribute("aria-label", `关闭 ${candidate.title} 详情`);
   const title = element(document, "h2", "detail-title", candidate.title);
   title.id = `detail-title-${candidate.candidateId}`;
-  const titleEn = candidate.titleEn?.trim()
+  const titleEn = candidate.titleEn?.trim() && candidate.titleEn.trim().toLocaleLowerCase() !== candidate.title.trim().toLocaleLowerCase()
     ? element(document, "p", "detail-title-en", candidate.titleEn.trim())
     : undefined;
   const identity = element(document, "div", "detail-identity");
@@ -627,6 +627,12 @@ export function openCandidateDetail(options: {
     descriptionSection.append(description);
   }
   const metadata = element(document, "div", "detail-metadata");
+  if (candidate.scientificQuestion?.trim()) {
+    const question = element(document, "section", "detail-section scientific-question");
+    question.append(element(document, "h3", "detail-section-title", "科学问题"));
+    question.append(renderMarkdown(document, candidate.scientificQuestion, options.onOpenLink));
+    descriptionSection.prepend(question);
+  }
   metadata.append(chips(document, [candidate.assetKind, candidate.language, candidate.plotFamily].filter(Boolean), 3));
   const scenario = element(document, "section", "detail-section");
   scenario.append(element(document, "h3", "detail-section-title", "应用场景"));
@@ -645,9 +651,9 @@ export function openCandidateDetail(options: {
   const shell = element(document, "div", "detail-shell");
   const main = element(document, "div", "detail-main");
   const aside = element(document, "aside", "detail-technical-panel");
-  aside.hidden = !saveFlow;
-  shell.classList.toggle("is-technical-open", saveFlow);
-  dialog.classList.toggle("has-technical", saveFlow);
+  aside.hidden = true;
+  shell.classList.toggle("is-technical-open", false);
+  dialog.classList.toggle("has-technical", false);
   aside.setAttribute("aria-label", "技术与验证信息");
   const technical = element(document, "div", "detail-technical");
   appendDetailSection(document, technical, "来源与执行边界", providerStateLines(candidate));
@@ -752,7 +758,7 @@ export function openCandidateDetail(options: {
   actions.append(closeButton);
   toolbar.append(titleBlock, actions);
   main.append(identity, preview, descriptionSection, metadata);
-  if (saveFlow) main.append(status);
+  if (saveFlow) main.append(technicalToggle, status);
   else main.append(technicalToggle, status, controls);
   shell.append(main, aside);
   panel.append(toolbar, shell);

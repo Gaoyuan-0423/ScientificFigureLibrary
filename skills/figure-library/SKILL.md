@@ -32,6 +32,16 @@ reading it does not install a Skill, execute helpers, or grant write approval.
   relevant backend references. Preserve the reference style by default.
 - Export diagnostics only when requested, using `figure_library_export_diagnostics`.
 
+## Recreate and publish templates
+
+Use the existing description/style/organization guidance. Propose a readable English
+subtitle and a source-grounded scientific question; inspect the whole figure and relevant
+panel/legend/axis crops before and after rendering. The host runs plotting, not SFL.
+Use figure_library_plan_publish → one human review → figure_library_apply_publish.
+Default publication is local; open_module is explicit and ends at a PR. See
+[library workflows](references/library-workflows.md) for proposal fields and recovery.
+Keep provenance/execution truth in metadata, not repeated template-facing disclaimers.
+
 ## Search and display candidates
 
 1. Call `figure_library_source_status` when the effective Library/setup is
