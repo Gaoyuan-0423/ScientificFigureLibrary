@@ -144,8 +144,7 @@ The legacy `executionStatus` field remains a compatibility projection of
 unknown scope, upstream unknown, and scientific not assessed; it is never
 promoted to full workflow reproduction or scientific validation.
 
-Code inferred from a visual must use relationship `visual_inference` and remain
-`scaffold` / `not_run` with the claim `inspired_by_not_reproduced`.
+Visual-reference provenance (`visual_inference`), code maturity, and plot execution are independent. Agent-generated or adapted code may have recorded execution. A passed execution still requires rendered output, generated-output links and stored evidence. Source-reference images need not be paired with code outputs.
 
 All public operations return a terminal outcome envelope:
 
@@ -1208,3 +1207,41 @@ The local Web client starts background work using authenticated POST `gallery-ca
 Private authenticated POST endpoints `gallery-cache/plan` and `gallery-cache/apply` support FigureYa and Open Figure Modules only. Plan accepts `providerId` and `mode` (`images`, `code`, `update`) and returns a session token, fixed-catalog counts, and Library-contained destinations. Apply requires that exact token and `confirmedBy: user`; expired plans, changed Library context, and changed catalogs are rejected. Concurrent/repeated Apply reuses the same in-session result. Results report image/archive successes and per-item failures; no cross-session completion replay is claimed.
 
 These operations prepare verified source archives and preview cache files only, never project materializations or execution. Copying a drawing prompt reuses the same source-pack cache; it does not write a third derived copy. Exact-preview receipts and materialization plan/apply remain required for Save to project. Update verifies and fills the current catalog's cache, not its upstream catalog version. Successful old fixed-version caches remain intact when a later item fails. FigureYa and Open Figure use their shared Library source-pack directories.
+
+## Unified publication protocol
+
+The service advertises publicationProtocolVersion=1 and bilingualTemplateTitles.
+figure_library_plan_publish accepts exactly one candidate or working selector, with
+target=local (default) or open_module (explicit). Candidate follows the Working asset
+input vocabulary but proposes links without confirmedBy and omits confirmations.
+It requires mode, a readable templateId, title, titleEn, scientificQuestion and application.
+An existing working selector includes templateId/revisionId/contentDigest/reviewDigest.
+Optional gateDecisions are reviewed with that exact existing Working, never auto-waived.
+
+Plan has no persistent writes. It returns approval=pending, the final proposed metadata,
+asset inventory, exact preview, digest and technical review. Host Gallery actions are
+reviewed alongside it and remain host-owned. Prospective selections are not evidence
+of prior human consent. Public preflight contains a contentSelector and no published
+exactSelector until the matching real Release exists. It includes licenses and similar
+candidates in this single review. Original/public availability does not relicense assets.
+
+figure_library_apply_publish accepts planDigest, operationId and, when the same review
+includes similar candidates, acceptSimilarCandidates=true. After human approval it
+creates/updates Working, applies explicit gate decisions, publishes locally and optionally
+submits a PR. It never executes code, moves Gallery files or merges a PR. Public submission
+uses gh and verifies jarxunlai. Plans are session-local and expire after 30 minutes.
+
+Durable operation journals under store/operations/unified-publications bind the original
+plan and completed stages. Same operationId resumes a confirmed partial operation across
+restart; completed operations replay without duplicate releases or PRs. Files or targets
+changed before application require a fresh plan. Public failure retains Local Published.
+Operation locks are never stolen; an abnormal process exit leaving a .lock requires
+operator inspection of stopped writers before removing only that operation lock.
+
+Optional titleEn is persisted in new revisions and projected to Local search, detail,
+materialization metadata and Open Module. Old records without it remain readable and
+are not rewritten. New public modules require a readable English title, not a derived
+slug. UI subtitles use ordinary grey text; identifiers remain separate. Routine data
+origin/execution states remain in technical metadata, not default template summaries.
+Legacy fine-grained operations remain supported. Host guidance must detect the new
+capability before using these tools; updating a checkout does not update an installed host.

@@ -18,6 +18,7 @@ const PNG_BYTES = Buffer.from(
 function candidate(overrides: Partial<VersionedTemplateCandidate> = {}): VersionedTemplateCandidate {
   const base: VersionedTemplateCandidate = {
     title: "Cancer Cell通路NES热图",
+    titleEn: "Pathway NES Heatmap",
     description: "A portable heatmap example.",
     tags: ["heatmap", "nes"],
     visualProfile: "Compare pathway NES values.",
@@ -185,7 +186,8 @@ test("Open Figure sanitizer keeps generated preview and drops source/original/pr
     const yaml = new TextDecoder().decode(built.files.find((file) => file.path === "module.yml")!.bytes);
     assert.match(yaml, /code: MIT/u);
     assert.doesNotMatch(yaml, /private_reference/u);
-    assert.equal(built.titleEnDerived, true);
+    assert.equal(built.titleEnDerived, false);
+    assert.equal(built.titleEn, "Pathway NES Heatmap");
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

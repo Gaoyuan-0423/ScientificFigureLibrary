@@ -197,7 +197,7 @@ test("direct intake enforces canonical paths, code origin, grouping, links, and 
     });
     assert.ok(
       invalidPlan.review.validationErrors.some(
-        (error) => error.code === "visual_inference_must_be_unrun_scaffold",
+        (error) => error.code === "passed_execution_requires_rendered_output",
       ),
     );
 

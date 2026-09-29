@@ -564,6 +564,8 @@ export async function prepareTransportImage(input: {
   purpose: TransportImagePurpose;
   maxDataUrlBytes: number;
   libraryRoot: string;
+  /** Pure preflight callers must not create rendition cache files. */
+  cache?: boolean;
   timeoutMs?: number;
 }): Promise<TransportImageResult> {
   const startedAt = performance.now();
@@ -611,6 +613,12 @@ export async function prepareTransportImage(input: {
       purpose: input.purpose,
     });
   }
+
+  if (input.cache === false) return generateRendition({
+    sourceBytes: input.sourceBytes, sourceMime, sourceSha256: input.sourceSha256,
+    purpose: input.purpose, maxDataUrlBytes: input.maxDataUrlBytes,
+    timeoutMs: input.timeoutMs ?? DEFAULT_ENCODE_TIMEOUT_MS,
+  });
 
   const key = renditionCacheKey({
     sourceSha256: input.sourceSha256,

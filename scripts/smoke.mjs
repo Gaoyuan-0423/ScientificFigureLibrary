@@ -114,8 +114,10 @@ try {
     "figure_library_apply_working_revision",
     "figure_library_plan_review_gate_update",
     "figure_library_apply_review_gate_update",
-    "figure_library_plan_publish_working_revision",
-    "figure_library_apply_publish_working_revision",
+    "figure_library_plan_publish",
+  "figure_library_plan_publish_working_revision",
+    "figure_library_apply_publish",
+  "figure_library_apply_publish_working_revision",
     "figure_library_plan_discard_working_revision",
     "figure_library_apply_discard_working_revision",
     "figure_library_plan_restore_release",
@@ -311,6 +313,26 @@ try {
   ) {
     throw new Error("exact FigureYa preview did not return one verified MCP image and path");
   }
+
+
+  smokeStep = "unified-publication";
+  const unifiedPublication = await client.callTool({ name: "figure_library_plan_publish", arguments: { candidate: {
+    mode: "create", templateId: "smoke-unified-template", title: "单次发布模板", titleEn: "Single Confirmation Template",
+    scientificQuestion: "How can grouped values be compared?", application: "Compare groups with a reusable plot.",
+    assetKind: "plot_template", language: "R", codeStatus: "scaffold", executionStatus: "passed",
+    visualAssets: [{ assetId: "original", sourcePath: visualPath, visualRole: "source_reference" }, { assetId: "render", sourcePath: renderedPath, visualRole: "rendered_output" }],
+    codeAssets: [{ assetId: "plot", sourcePath: codePath, language: "R", codeOrigin: "agent_generated" }],
+    evidenceAssets: [{ assetId: "run", sourcePath: evidencePath }], primaryVisualAssetId: "render",
+    primaryPreviewOverride: { reason: "Use the generated template example." }, canonicalCodeAssetId: "plot",
+    figureCodeLinks: [{ visualAssetId: "render", codeAssetIds: ["plot"], relationship: "generated_output", evidence: "Smoke fixture output and execution record." }],
+    validationState: { schema: "figure-library.validation-state.v1", plotExecution: { status: "passed", scope: "synthetic_data", evidenceAssetIds: ["run"] }, upstreamWorkflow: { status: "not_run" }, scientificValidation: { status: "not_assessed" } },
+  } } });
+  if (outcome(unifiedPublication).code !== "publish_plan_ready" || !unifiedPublication.content.some(b => b.type === "image")) throw new Error("unified publication Plan/preview failed: " + text(unifiedPublication));
+  const unifiedArgs = { planDigest: structured(unifiedPublication).plan.planDigest, operationId: "smoke-unified-once" };
+  const unifiedApplied = await client.callTool({ name: "figure_library_apply_publish", arguments: unifiedArgs });
+  if (outcome(unifiedApplied).code !== "publish_completed") throw new Error("unified publication failed: " + text(unifiedApplied));
+  const unifiedReplay = await client.callTool({ name: "figure_library_apply_publish", arguments: unifiedArgs });
+  if (outcome(unifiedReplay).code !== "publish_replayed") throw new Error("unified publication did not replay");
 
   smokeStep = "direct-intake-working";
   const workingPlanned = await client.callTool({
@@ -915,7 +937,7 @@ try {
   });
   if (
     finalStatus.isError ||
-    structured(finalStatus).library?.publishedCount !== 1 ||
+    structured(finalStatus).library?.publishedCount !== 2 ||
     structured(finalStatus).library?.workingCount !== 1 ||
     structured(finalStatus).providers?.local?.ordinarySearchScope !== "Published only"
   ) {
