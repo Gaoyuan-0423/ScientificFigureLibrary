@@ -1175,10 +1175,35 @@ test("local save purpose loads the exact image and puts save in the top toolbar"
   assert.equal(detail.dialog.classList.contains("detail-save-flow"), true);
   assert.match(detail.confirmButton.textContent ?? "", /保存到项目/u);
   assert.equal(detail.confirmButton.closest(".detail-toolbar-actions") !== null, true);
-  assert.equal(detail.dialog.querySelector<HTMLElement>(".detail-technical-panel")?.hidden, false);
-  assert.equal(detail.dialog.querySelector(".detail-technical-toggle"), null);
+  assert.equal(detail.dialog.querySelector<HTMLElement>(".detail-technical-panel")?.hidden, true);
+  assert.ok(detail.dialog.querySelector(".detail-technical-toggle"));
   assert.equal(detail.confirmButton.getAttribute("aria-label"), "保存到项目");
   assert.match(detail.status.textContent ?? "", /正在加载精确图片/u);
   assert.match(detail.preview.textContent ?? "", /正在加载精确图片/u);
   detail.closeButton.click();
+});
+
+
+test("Local titles use readable English subtitles and technical states are folded even in save flow", () => {
+  const dom = createTestWindow(); const document = dom.window.document;
+  const item = candidate("org.scientificfigurelibrary.local", "bilingual-local", "ready");
+  item.title = "转录因子基序富集注释热图"; item.titleEn = "Annotated TF Motif Enrichment Heatmap";
+  item.warnings = ["synthetic_values", "upstream_not_run"];
+  const cards = document.createElement("div"), empty = document.createElement("div");
+  const result = { candidates: [item], resultSetId: "bilingual-result" } as SearchResult;
+  renderCandidateCards({ document, cards, empty, result, onDetail() {} });
+  assert.equal(cards.querySelector(".module-title-en")?.textContent, item.titleEn);
+  assert.doesNotMatch(cards.textContent ?? "", /synthetic_values|upstream_not_run/);
+  const opener = document.createElement("button"); document.body.append(opener);
+  const detail = openCandidateDetail({ document, candidate: item, opener, purpose: "save",
+    serverToolsAvailable: true, updateModelContextAvailable: true, onRequestExactPreview() {}, onRequestAgentReview() {} });
+  assert.equal(detail.dialog.querySelector(".detail-title-en")?.textContent, item.titleEn);
+  const panel = detail.dialog.querySelector<HTMLElement>(".detail-technical-panel")!;
+  assert.equal(panel.hidden, true);
+  (detail.dialog.querySelector(".detail-technical-toggle") as HTMLButtonElement).click();
+  assert.equal(panel.hidden, false); assert.match(panel.textContent ?? "", /synthetic_values/);
+  detail.closeButton.click();
+  item.titleEn = item.title;
+  renderCandidateCards({ document, cards, empty, result, onDetail() {} });
+  assert.equal(cards.querySelector(".module-title-en"), null);
 });

@@ -366,9 +366,11 @@ test("npm authoritative inventory drops downloadable gallery images and keeps th
   ]);
 });
 
-test("release smoke inventory remains exactly 56 tools", () => {
-  assert.equal(STANDARD_TOOL_NAMES.length, 56);
-  assert.equal(new Set(STANDARD_TOOL_NAMES).size, 56);
+test("release smoke inventory includes unified publication (58 tools)", () => {
+  assert.equal(STANDARD_TOOL_NAMES.length, 58);
+  assert.equal(new Set(STANDARD_TOOL_NAMES).size, 58);
+  assert.ok(STANDARD_TOOL_NAMES.includes("figure_library_plan_publish"));
+  assert.ok(STANDARD_TOOL_NAMES.includes("figure_library_apply_publish"));
 });
 
 test("every public package entrypoint is gated by the final Community snapshot", async () => {

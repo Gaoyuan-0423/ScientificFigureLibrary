@@ -200,9 +200,8 @@ Relationship values are `user_supplied_pair`, `author_provided_original`,
 `visual_inference`, `adapted_from_template`, and `generated_output`. Code origin
 values are `user_supplied`, `author_provided`, `agent_generated`, and `adapted`.
 
-`visual_inference` is always `scaffold` / `not_run`; it is inspired by a visual,
-not reproduced from original data. `plotExecution.passed` requires a rendered
-output, a generated-output relationship, and evidence. SFL itself never
+`visual_inference` describes provenance, not execution status. Source-reference visuals may remain unpaired.
+`plotExecution.passed` requires a rendered output, a generated-output relationship, and evidence. SFL itself never
 generates this evidence because it does not execute code.
 
 Canonical preview selection defaults to the sole `source_reference`; if only

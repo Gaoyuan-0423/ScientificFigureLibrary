@@ -125,6 +125,7 @@ export async function startLocalHttp(options: {
         return json(response, 200, localConnection({ node: process.execPath, server: path.resolve(import.meta.dirname, "index.js") }));
       }
       if (request.method === "GET" && url.pathname === "/api/integrations") return json(response, 200, integrationGuide({ server: path.resolve(import.meta.dirname, "index.js") }));
+      if (request.method === "GET" && url.pathname === "/api/favorites") return json(response, 200, await service.local.favorites());
       if (request.method === "GET" && url.pathname === "/api/library") return json(response, 200, await service.local.library());
       if (request.method === "GET" && url.pathname === "/api/preview-cache") return json(response, 200, await service.local.previewCache());
       if (request.method === "GET" && url.pathname === "/api/gallery-cache/tasks") return json(response, 200, await service.local.galleryCacheTasks());
@@ -142,10 +143,6 @@ export async function startLocalHttp(options: {
         return json(response, 200, { sourcePath: file, filename, bytes: bytes.length });
       }
       const input: unknown = JSON.parse((await readBody(request, BODY_LIMIT)).toString());
-      if (url.pathname === "/api/updates/check") {
-        const { force } = z.object({ force: z.boolean().optional().default(false) }).strict().parse(input);
-        return json(response, 200, await checkUpdates(force));
-      }
       if (url.pathname === "/api/gallery-cache/start") return json(response, 202, await service.local.startGalleryCache(input));
       if (url.pathname === "/api/gallery-cache/plan") return json(response, 200, await service.local.planGalleryCache(input));
       if (url.pathname === "/api/gallery-cache/apply") {
@@ -169,6 +166,10 @@ export async function startLocalHttp(options: {
         request.socket?.setTimeout(0);
         return json(response, 200, await service.local.prefetchPreviewCache(body.providerId));
       }
+      if (url.pathname === "/api/updates/check") {
+        const { force } = z.object({ force: z.boolean().optional().default(false) }).strict().parse(input);
+        return json(response, 200, await checkUpdates(force));
+      }
       if (url.pathname === "/api/network-access") {
         const body = z.object({
           useSystemProxy: z.boolean(),
@@ -184,6 +185,7 @@ export async function startLocalHttp(options: {
       }
       if (url.pathname === "/api/confirm") return json(response, 200, await service.local.confirm(input));
       if (url.pathname === "/api/asset") return json(response, 200, await service.local.asset(input));
+      if (url.pathname === "/api/favorites") return json(response, 200, await service.local.changeFavorite(input));
       if (url.pathname === "/api/gallery") return json(response, 200, await service.local.gallery(input));
       if (url.pathname === "/api/resource") {
         const { uri } = z.object({ uri: z.string().max(2_000) }).strict().parse(input);

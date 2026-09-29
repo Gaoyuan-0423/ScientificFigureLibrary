@@ -21,7 +21,7 @@ function reconstructCollapsedProse(text: string) {
   value = intro
     .replace(/(?<=[\u3400-\u9fff。！？；])\s+(?=场景[一二三四五六七八九十0-9]+[:：])/gu, "\n\n")
     .replace(/(?<=[\u3400-\u9fff。！？；])\s+(?=Scenario\s+\d+[:：])/gu, "\n\n")
-    .replace(/(?<=[\u3400-\u9fff。！？])\s+(?=[A-Z])/gu, "\n\n")
+    .replace(/(?<=[。！？])\s+(?=[A-Z])/gu, "\n\n")
     .replace(/\s+(From\s+https?:\/\/\S+)/gu, "\n\n$1")
     .replace(/(场景[一二三四五六七八九十0-9]+[:：])/gu, "\n\n- **$1** ")
     .replace(/(Scenario\s+\d+[:：])/gu, "\n\n- **$1** ")

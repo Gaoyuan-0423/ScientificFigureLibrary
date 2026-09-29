@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { FavoriteStore } from "./local/favorites.ts";
 import { createGalleryCache } from "./local/gallery-cache.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -17,6 +18,7 @@ import {
 import { LibraryRuntime, readLibraryRootMarker } from "./library-runtime.ts";
 import { WorkspaceRuntime } from "./workspace-runtime.ts";
 import { firstRunSetupLines, firstRunSetupPayload, firstRunSetupStatus } from "./first-run-setup.ts";
+import { definePublishOperations } from "./publish-tools.ts";
 import { defineLifecycleOperations } from "./lifecycle-tools.ts";
 import { defineMaterializationOperations } from "./materialization-tools.ts";
 import { defineGitHubPublicationOperations } from "./github-publication-tools.ts";
@@ -212,6 +214,7 @@ function headlessPlotTaskItem(candidate: TemplateCandidate) {
     ...(candidate.materializationSelectors ? { materializationSelectors: candidate.materializationSelectors } : {}),
     ...(candidate.materializationModes ? { materializationModes: candidate.materializationModes } : {}),
     title: candidate.title,
+    ...(candidate.titleEn ? { titleEn: candidate.titleEn } : {}),
     description: candidate.description,
     application: candidate.application ?? "",
     dataProfile: candidate.dataProfile ?? "",
@@ -540,6 +543,7 @@ interface SearchSessionState {
 }
 
 export interface LibraryServiceOptions {
+  favoritesDirectory?: string;
   registry?: ProviderRegistry;
   providerSourceManager?: ProviderSourceManager;
   personalModuleRoot?: string;
@@ -550,6 +554,7 @@ export interface LibraryServiceOptions {
 
 export async function createLibraryService(options: LibraryServiceOptions = {}) {
   const operations = new OperationRegistry();
+  const favorites = new FavoriteStore(options.favoritesDirectory);
   const index = await CatalogIndex.load();
   const providerController = options.registry
     ? undefined
@@ -621,6 +626,11 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
 
   const hostIntegrationCapabilities = {
     guidanceTool: "figure_library_get_skill",
+    publicationPlanTool: "figure_library_plan_publish",
+    publicationApplyTool: "figure_library_apply_publish",
+    publicationProtocolVersion: 1,
+    independentExecutionState: true,
+    bilingualTemplateTitles: true,
     paginationTool: "figure_library_search_page",
     candidateImagesTool: "figure_library_get_candidate_images",
     candidateImageResourceTemplate: CANDIDATE_IMAGE_URI_TEMPLATE,
@@ -895,6 +905,7 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
     toolName: "figure_library_search" | "figure_library_search_page";
     operationStartedAt: number;
     resultSetId?: string;
+    favoriteSelector?: ExactTemplateSelector;
   }) {
     const { parsedInput, explicitlySelected, correlationId, invocationSource, toolName, operationStartedAt } = options;
     if (options.resultSetId) {
@@ -968,7 +979,12 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
     const order = new Map(
       registry.list().map(({ providerId }, index) => [providerId, index]),
     );
-    const ranked = searched.flatMap(({ candidates }) => candidates).sort((left, right) => {
+    const matched = searched.flatMap(({ candidates }) => candidates).filter(candidate =>
+      !options.favoriteSelector || exactSelectorDigest(candidate.exactSelector) === exactSelectorDigest(options.favoriteSelector));
+    if (options.favoriteSelector && !matched.length) {
+      throw new Error("收藏的精确版本暂不可用，来源可能已更新或停用。收藏记录已保留；可在图库中查找并收藏新版本。");
+    }
+    const ranked = matched.sort((left, right) => {
       if (parsedInput.browse) {
         if (left.providerId !== right.providerId) {
           return (order.get(left.providerId) ?? Number.MAX_SAFE_INTEGER) -
@@ -2233,7 +2249,7 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
   });
   defineBundleOperations({ operations, currentLibraries });
   defineGitHubPublicationOperations({ operations });
-  defineOpenFigurePrOperations({
+  const publicPublication = defineOpenFigurePrOperations({
     ...options.openFigurePr,
     operations,
     currentLibraries,
@@ -2302,6 +2318,7 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
       return { candidates, queryDigest, resultSetId };
     },
   });
+  definePublishOperations({ operations, currentLibrary: async () => (await currentLibraries()).versionedLibrary, publicService: publicPublication });
   definePublicationExportOperations({ operations, currentLibraries });
   defineProviderSourceOperations({
     operations,
@@ -2382,6 +2399,38 @@ export async function createLibraryService(options: LibraryServiceOptions = {}) 
   return {
     operations,
     local: {
+      favorites: () => operations.run(async () => ({ items: await favorites.list() })),
+      changeFavorite: (raw: unknown) => operations.run(async () => {
+        const input = z.discriminatedUnion("action", [
+          z.object({ action: z.literal("add"), resultSetId: z.string().min(1), candidateId: z.string().min(1) }).strict(),
+          z.object({ action: z.literal("remove"), id: z.string().regex(HASH) }).strict(),
+          z.object({ action: z.literal("open"), id: z.string().regex(HASH) }).strict(),
+        ]).parse(raw);
+        if (input.action === "remove") await favorites.remove(input.id);
+        else if (input.action === "add") {
+          const state = searchSessions.get(input.resultSetId);
+          previewConfirmations.getResultSet(input.resultSetId);
+          if (!state || state.libraryBindingDigest !== libraryBindingDigest(await currentLibraries())) {
+            throw new Error("图库已切换，请刷新候选后再收藏。");
+          }
+          const candidate = state.candidates.find(item => scopedCandidateId(input.resultSetId, item) === input.candidateId);
+          if (!candidate) throw new Error("候选已失效，请重新打开图库后收藏。");
+          await favorites.add(candidate);
+        } else {
+          const favorite = await favorites.get(input.id);
+          if (!favorite) throw new Error("这条收藏已被移除。");
+          if (!registry.list().some(source => source.providerId === favorite.providerId && source.enabled !== false)) {
+            throw new Error("收藏的来源暂不可用或已停用。收藏记录已保留，可在连接外部图库中恢复来源。");
+          }
+          return executeUnifiedSearch({
+            parsedInput: { query: "", browse: true, providerIds: [favorite.providerId], limit: 1 },
+            favoriteSelector: favorite.exactSelector, explicitlySelected: true,
+            correlationId: diagnostics.createCorrelationId("favorite"), invocationSource: "app",
+            toolName: "figure_library_search", operationStartedAt: performance.now(),
+          });
+        }
+        return { items: await favorites.list() };
+      }),
       planGalleryCache: (input: unknown) => operations.run(() => galleryCache.plan(input)),
       startGalleryCache: (input: unknown) => operations.run(async () => galleryCache.start(input)),
       galleryCacheTasks: () => operations.run(async () => galleryCache.tasks()),
